@@ -1,11 +1,10 @@
 # Reward-system design
 
-The future reward engine will compare two normalized snapshots and score deltas,
-not reward a recommendation before an outcome is observed. Configured weights
-already reserve the intended signals: territory, enemy losses, factory gain,
-own manpower/equipment loss, supply deficit and encirclement.
+The reward engine compares two normalized snapshots and scores deltas, never a
+recommendation before an outcome is observed. Configured terms cover territory,
+victory points, casualties, factories, equipment, divisions, encirclements,
+wars, supply, failed offensives and manpower exhaustion.
 
-Before phase 3, every term needs a precise unit and normalization window. Large
-strategic terminal rewards (war won/lost) must not drown out tactical feedback,
-and cumulative counters must be converted to deltas. Tests will include no-op,
-successful breakthrough, failed offensive and destroyed-division outcomes.
+Each term is normalized to a bounded tactical scale before its configurable
+weight is applied. Cumulative casualty/factory counters are converted to deltas.
+The returned `RewardBreakdown` retains every component for audit and tuning.

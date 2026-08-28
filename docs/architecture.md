@@ -1,10 +1,10 @@
 # Architecture
 
-## Scope of version 0.1.0
+## Scope of version 0.1.0-alpha.2
 
-The current implementation covers phases 0 and 1 only. It deliberately stops
-at producing a deterministic recommendation from synthetic normalized state.
-There is no game integration, command execution, persistent learning or LLM.
+The implementation includes the local pipeline through doctrine generation,
+plus a versioned read-only telemetry consumer. Real HOI4 telemetry production
+and command transport remain unverified and therefore disabled.
 
 ## Data flow
 
@@ -43,6 +43,11 @@ save snapshots, mod telemetry or a future screen observer.
 - `event`: state transition/event detection and non-blocking in-process fan-out.
 - `simulation`: end-to-end deterministic scenario runner and output model.
 - `config`: complete TOML settings and native Windows/Linux path resolution.
+- `memory`, `learning`, `reward`: SQLite episodes, similarity, Q-values and outcomes.
+- `reasoner`, `operational`, `scheduler`, `runtime`: event-driven three-level AI.
+- `doctrine`: evidence-based proposals and after-action reviews.
+- `telemetry`: bounded, versioned, read-only HOI4 log ingestion.
+- `safety`, `performance`: execution gates and resource/latency monitoring.
 
 All normalized structs use `serde`, so a later replay recorder can persist the
 exact inputs and outputs without changing core types.
@@ -85,9 +90,9 @@ adapter will resolve game-specific directories separately from GenHOI's data.
 
 ## Future extension points
 
-- A telemetry adapter can implement `GameAdapter` without changing metrics.
-- A `StrategicReasoner` can consume a compact summary and return validated JSON.
-- SQLite recording can serialize states/events/actions at the simulation seam.
+- The telemetry adapter implements `GameAdapter` without changing metrics.
+- `StrategicReasoner` consumes a compact summary and returns validated JSON.
+- SQLite recording serializes states/actions at the simulation seam.
 - Replay can feed recorded observations through `MockGameAdapter::with_observations`.
-- Q-values and retrieved episodes can rank the constrained candidate actions;
+- Q-values and retrieved episodes rank only constrained candidate actions;
   hard safety filters remain deterministic and run afterward.

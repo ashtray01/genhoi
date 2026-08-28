@@ -4,7 +4,7 @@ use crate::config::RiskConfig;
 use crate::metrics::FrontMetrics;
 use crate::state::FrontState;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum GameActionKind {
     StopOffensive,

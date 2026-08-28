@@ -5,6 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::doctrine::{AfterActionReview, LessonDraft, LessonStatus, StoredLesson};
+use crate::learning::{EpisodeSummary, QValue, SimilarEpisode, cosine_similarity};
 use crate::simulation::SimulationReport;
 use crate::state::GameState;
 
@@ -294,6 +296,292 @@ impl MemoryStore {
         })
     }
 
+    /// Reads a contextual action value, returning zero for an unseen pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite cannot query the Q-value table.
+    pub fn q_value(&self, state_key: &str, action: &str) -> Result<QValue> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT value, visits FROM q_values WHERE state_key = ?1 AND action = ?2",
+                params![state_key, action],
+                |row| {
+                    Ok(QValue {
+                        value: row.get(0)?,
+                        visits: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or(QValue {
+                value: 0.0,
+                visits: 0,
+            }))
+    }
+
+    /// Inserts or replaces one contextual Q-value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite cannot persist the value.
+    pub fn set_q_value(&self, state_key: &str, action: &str, q: QValue) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO q_values(state_key, action, value, visits, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(state_key, action) DO UPDATE SET
+                 value = excluded.value,
+                 visits = excluded.visits,
+                 updated_at = excluded.updated_at",
+            params![state_key, action, q.value, q.visits, unix_millis()?],
+        )?;
+        Ok(())
+    }
+
+    /// Stores one compact state/action/reward episode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if features cannot be serialized or SQLite cannot
+    /// insert the episode.
+    pub fn record_episode(
+        &self,
+        session_id: &str,
+        features: &[f32],
+        action: &str,
+        reward: f32,
+        outcome_json: &str,
+    ) -> Result<i64> {
+        self.connection.execute(
+            "INSERT INTO episodes(
+                 session_id, feature_json, action, reward, outcome_json, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                session_id,
+                serde_json::to_string(features)?,
+                action,
+                reward,
+                outcome_json,
+                unix_millis()?
+            ],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Retrieves the numerically closest historical episodes.
+    ///
+    /// At most 1,000 recent episodes are scanned to keep runtime bounded.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite querying or feature deserialization fails.
+    pub fn similar_episodes(&self, features: &[f32], limit: usize) -> Result<Vec<SimilarEpisode>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, feature_json, action, reward, outcome_json
+             FROM episodes ORDER BY id DESC LIMIT 1000",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f32>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+        let mut episodes = Vec::new();
+        for row in rows {
+            let (id, feature_json, action, reward, outcome_json) = row?;
+            let historical: Vec<f32> = serde_json::from_str(&feature_json)?;
+            episodes.push(SimilarEpisode {
+                id,
+                action,
+                reward,
+                outcome_json,
+                similarity: cosine_similarity(features, &historical),
+            });
+        }
+        episodes.sort_by(|left, right| right.similarity.total_cmp(&left.similarity));
+        episodes.truncate(limit.min(20));
+        Ok(episodes)
+    }
+
+    /// Loads all episodes belonging to one session in chronological order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite querying or feature deserialization fails.
+    pub fn session_episodes(&self, session_id: &str) -> Result<Vec<EpisodeSummary>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, feature_json, action, reward, outcome_json
+             FROM episodes WHERE session_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([session_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f32>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+        let mut episodes = Vec::new();
+        for row in rows {
+            let (id, features, action, reward, outcome_json) = row?;
+            episodes.push(EpisodeSummary {
+                id,
+                features: serde_json::from_str(&features)?,
+                action,
+                reward,
+                outcome_json,
+            });
+        }
+        Ok(episodes)
+    }
+
+    /// Stores a proposed lesson. It is never activated automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if evidence serialization or SQLite insertion fails.
+    pub fn save_lesson(&self, lesson: &LessonDraft) -> Result<i64> {
+        anyhow::ensure!(
+            lesson.status == LessonStatus::Proposed,
+            "new lessons must start as proposed"
+        );
+        let now = unix_millis()?;
+        self.connection.execute(
+            "INSERT INTO lessons(
+                 observation, evidence_json, proposed_doctrine, confidence,
+                 status, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![
+                lesson.observation,
+                serde_json::to_string(&lesson.evidence)?,
+                lesson.proposed_doctrine,
+                lesson.confidence,
+                lesson.status.to_string(),
+                now
+            ],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Lists lessons, optionally filtering by status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite querying, status parsing or evidence
+    /// deserialization fails.
+    pub fn lessons(&self, status: Option<LessonStatus>) -> Result<Vec<StoredLesson>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, observation, evidence_json, proposed_doctrine, confidence, status
+             FROM lessons WHERE (?1 IS NULL OR status = ?1) ORDER BY id DESC",
+        )?;
+        let status = status.map(|value| value.to_string());
+        let rows = statement.query_map([status], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, f32>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })?;
+        let mut lessons = Vec::new();
+        for row in rows {
+            let (id, observation, evidence, proposed_doctrine, confidence, status) = row?;
+            lessons.push(StoredLesson {
+                id,
+                draft: LessonDraft {
+                    observation,
+                    evidence: serde_json::from_str(&evidence)?,
+                    proposed_doctrine,
+                    confidence,
+                    status: parse_lesson_status(&status)?,
+                },
+            });
+        }
+        Ok(lessons)
+    }
+
+    /// Explicitly changes a lesson status and mirrors active doctrine entries.
+    ///
+    /// Activation requires at least ten comparable episodes and confidence of
+    /// 0.75. This prevents freshly generated lessons from becoming hard rules.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unknown lessons, insufficient evidence, a proposed
+    /// target status, or SQLite failures.
+    pub fn set_lesson_status(&mut self, id: i64, status: LessonStatus) -> Result<()> {
+        anyhow::ensure!(
+            status != LessonStatus::Proposed,
+            "use save_lesson for proposals"
+        );
+        let (evidence_json, doctrine, confidence) = self.connection.query_row(
+            "SELECT evidence_json, proposed_doctrine, confidence FROM lessons WHERE id = ?1",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f32>(2)?,
+                ))
+            },
+        )?;
+        let evidence: crate::doctrine::LessonEvidence = serde_json::from_str(&evidence_json)?;
+        if status == LessonStatus::Active {
+            anyhow::ensure!(
+                confidence >= 0.75 && evidence.comparable_episodes >= 10,
+                "lesson needs confidence >= 0.75 and at least 10 comparable episodes"
+            );
+        }
+        let now = unix_millis()?;
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "UPDATE lessons SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status.to_string(), now, id],
+        )?;
+        if status == LessonStatus::Active {
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM doctrines WHERE lesson_id = ?1)",
+                [id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                transaction.execute(
+                    "INSERT INTO doctrines(lesson_id, text, confidence, status, created_at)
+                     VALUES (?1, ?2, ?3, 'active', ?4)",
+                    params![id, doctrine, confidence, now],
+                )?;
+            }
+        } else {
+            transaction.execute(
+                "UPDATE doctrines SET status = ?1 WHERE lesson_id = ?2",
+                params![status.to_string(), id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Stores a generated after-action report.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQLite cannot persist the report.
+    pub fn save_review(&self, review: &AfterActionReview) -> Result<i64> {
+        self.connection.execute(
+            "INSERT INTO reports(session_id, kind, report_text, created_at)
+             VALUES (?1, 'after_action', ?2, ?3)",
+            params![review.session_id, review.report, unix_millis()?],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
     fn count(&self, table: &str) -> Result<u64> {
         // Callers use only fixed internal table names; no user input reaches SQL.
         let query = format!("SELECT COUNT(*) FROM {table}");
@@ -309,10 +597,21 @@ fn unix_millis() -> Result<i64> {
     i64::try_from(millis).context("system timestamp exceeds SQLite integer range")
 }
 
+fn parse_lesson_status(value: &str) -> Result<LessonStatus> {
+    match value {
+        "proposed" => Ok(LessonStatus::Proposed),
+        "active" => Ok(LessonStatus::Active),
+        "rejected" => Ok(LessonStatus::Rejected),
+        "obsolete" => Ok(LessonStatus::Obsolete),
+        _ => anyhow::bail!("unknown lesson status {value}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::adapter::MockScenario;
     use crate::config::AppConfig;
+    use crate::doctrine::{LessonEvidence, LessonStatus};
     use crate::simulation;
 
     use super::*;
@@ -337,5 +636,24 @@ mod tests {
     fn unknown_session_is_rejected() {
         let store = MemoryStore::in_memory().expect("memory database");
         assert!(store.load_session("missing").is_err());
+    }
+
+    #[test]
+    fn doctrine_activation_requires_accumulated_evidence() {
+        let mut store = MemoryStore::in_memory().expect("memory database");
+        let weak = LessonDraft {
+            observation: "weak evidence".to_owned(),
+            evidence: LessonEvidence {
+                comparable_episodes: 5,
+                successes: 0,
+                failures: 5,
+                mean_reward: -1.0,
+            },
+            proposed_doctrine: "hold".to_owned(),
+            confidence: 0.8,
+            status: LessonStatus::Proposed,
+        };
+        let id = store.save_lesson(&weak).expect("proposal");
+        assert!(store.set_lesson_status(id, LessonStatus::Active).is_err());
     }
 }

@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub risk: RiskConfig,
     pub learning: LearningConfig,
     pub performance: PerformanceConfig,
+    pub logging: LoggingConfig,
     pub reward: RewardConfig,
     pub paths: PathsConfig,
 }
@@ -32,11 +33,13 @@ pub struct AgentConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     pub enabled: bool,
+    pub executable: PathBuf,
     pub model_path: PathBuf,
     pub threads: usize,
     pub context_size: usize,
     pub max_output_tokens: usize,
     pub temperature: f32,
+    pub timeout_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +61,7 @@ pub struct RiskConfig {
 pub struct LearningConfig {
     pub learning_rate: f32,
     pub exploration_rate: f32,
+    pub discount_factor: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,14 +71,31 @@ pub struct PerformanceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    pub level: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RewardConfig {
     pub territory_gain: f32,
+    pub territory_loss: f32,
+    pub victory_points: f32,
     pub enemy_losses: f32,
     pub factory_gain: f32,
+    pub factory_loss: f32,
     pub own_manpower_loss: f32,
     pub equipment_loss: f32,
     pub supply_penalty: f32,
     pub encirclement_penalty: f32,
+    pub enemy_divisions_destroyed: f32,
+    pub own_divisions_destroyed: f32,
+    pub successful_encirclement: f32,
+    pub war_won: f32,
+    pub war_lost: f32,
+    pub equipment_efficiency: f32,
+    pub stable_supply: f32,
+    pub failed_offensive: f32,
+    pub manpower_exhaustion: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +133,9 @@ impl AppConfig {
         if self.llm.threads == 0 || self.llm.threads > self.performance.maximum_cpu_threads {
             bail!("llm.threads must be between 1 and performance.maximum_cpu_threads");
         }
+        if self.llm.timeout_seconds == 0 {
+            bail!("llm.timeout_seconds must be greater than zero");
+        }
         if !(0.0..=1.0).contains(&self.risk.high)
             || !(0.0..=1.0).contains(&self.risk.critical)
             || self.risk.high >= self.risk.critical
@@ -123,6 +147,18 @@ impl AppConfig {
         }
         if self.agent.maximum_actions_per_interval == 0 {
             bail!("maximum_actions_per_interval must be greater than zero");
+        }
+        if !matches!(
+            self.logging.level.as_str(),
+            "trace" | "debug" | "info" | "warn" | "error"
+        ) {
+            bail!("logging.level must be trace, debug, info, warn, or error");
+        }
+        if !(0.0..=1.0).contains(&self.learning.learning_rate)
+            || !(0.0..=1.0).contains(&self.learning.exploration_rate)
+            || !(0.0..=1.0).contains(&self.learning.discount_factor)
+        {
+            bail!("learning rates and discount factor must be between zero and one");
         }
         Ok(())
     }

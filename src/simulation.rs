@@ -111,7 +111,7 @@ mod tests {
     fn default_simulation_matches_acceptance_scenario() {
         let report = run(&AppConfig::default(), MockScenario::DeepSalient).expect("simulation");
         let output = format_human(&report);
-        assert!(output.contains("GENHOI 0.1.0-alpha.1"));
+        assert!(output.contains("GENHOI 0.1.0-alpha.2"));
         assert!(output.contains("Supply: 43%"));
         assert!(output.contains("Salient ratio: 6.73"));
         assert!(output.contains("CRITICAL"));

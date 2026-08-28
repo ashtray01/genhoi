@@ -9,11 +9,13 @@ maximum_actions_per_interval = 3
 
 [llm]
 enabled = false
+executable = "llama-cli"
 model_path = "models/model.gguf"
 threads = 2
 context_size = 2048
 max_output_tokens = 256
 temperature = 0.2
+timeout_seconds = 45
 
 [reasoning]
 peace_seconds = 60
@@ -29,19 +31,35 @@ minimum_neck_width_km = 10.0
 [learning]
 learning_rate = 0.10
 exploration_rate = 0.05
+discount_factor = 0.90
 
 [performance]
 maximum_ram_mb = 1536
 maximum_cpu_threads = 2
 
+[logging]
+level = "info"
+
 [reward]
 territory_gain = 1.0
+territory_loss = 1.1
+victory_points = 0.8
 enemy_losses = 0.4
 factory_gain = 1.2
+factory_loss = 1.3
 own_manpower_loss = 0.8
 equipment_loss = 0.7
 supply_penalty = 0.6
 encirclement_penalty = 2.0
+enemy_divisions_destroyed = 0.8
+own_divisions_destroyed = 1.8
+successful_encirclement = 1.0
+war_won = 3.0
+war_lost = 3.5
+equipment_efficiency = 0.4
+stable_supply = 0.3
+failed_offensive = 1.0
+manpower_exhaustion = 1.5
 
 [paths]
 # Empty means the native per-user data directory:

@@ -4,6 +4,17 @@ Research date: 2026-08-28. This document separates verified capabilities from
 design hypotheses. HOI4's official product page currently lists both Windows
 and Linux support, so GenHOI treats both as first-class targets.
 
+## Local installation audit
+
+The development host was checked on 2026-08-28. A legacy HOI4 user-data tree
+and March 2025 logs exist, but there is no Steam app manifest `394360` and the
+remaining game directory has no vanilla `common/` script tree. Historical
+`setup.log` entries confirm that `on_daily_*` actions were registered and
+`game.log` lines use the expected timestamp/game-date/source prefix. This is
+useful evidence for the consumer parser, but it is not a current install and
+cannot validate a companion mod or field coverage. Phase-7 producer validation
+therefore remains open rather than relying on stale files.
+
 ## Finding
 
 No documented, supported external HOI4 API was found for reading live military
