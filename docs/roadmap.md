@@ -16,9 +16,16 @@
 - `genhoi simulate` human/JSON output and `genhoi config`.
 - Unit and scenario acceptance tests.
 
+## Completed: phase 2
+
+- Versioned SQLite schema covering sessions, games, states, decisions, actions,
+  outcomes, episodes, lessons, doctrines, Q-values, metrics and reports.
+- Atomic normalized state/decision recording with observer-only action status.
+- Deterministic session loading and `genhoi replay <session>` analysis.
+- Native database-path creation and `genhoi db-info` counters.
+
 ## Next
 
-- Phase 2: SQLite schema, sessions, state/action recording and replay CLI.
 - Phase 3: outcome deltas, configurable reward engine and lightweight Q-values.
 - Phase 4: rule-based strategic/operational reasoner and adaptive scheduler.
 - Phase 5: optional llama.cpp-compatible reasoner with strict JSON validation.

@@ -15,6 +15,7 @@ the local LLM are both disabled in the default configuration.
 - synchronous `GameAdapter` boundary and six-scenario `MockGameAdapter`;
 - deterministic front metrics and constrained action recommendations;
 - in-process event bus and state-derived critical events;
+- SQLite session/state/decision recording and deterministic replay;
 - TOML configuration with native Windows/Linux data paths;
 - human-readable and JSON simulation output;
 - unit and scenario acceptance tests.
@@ -32,6 +33,9 @@ cargo test
 cargo run -- simulate
 cargo run -- simulate --scenario low-supply
 cargo run -- simulate --scenario deep-salient --json
+cargo run -- simulate --record
+cargo run -- replay <session-id>
+cargo run -- db-info
 cargo run -- config
 ```
 

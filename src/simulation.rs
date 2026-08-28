@@ -33,10 +33,23 @@ pub fn run(config: &AppConfig, scenario: MockScenario) -> Result<SimulationRepor
     let state = adapter
         .observe()
         .context("mock adapter observation failed")?;
+    analyze_state(config, state, scenario.title().to_owned())
+}
+
+/// Re-runs deterministic analysis for a normalized observation.
+///
+/// # Errors
+///
+/// Returns an error if the state contains no front or the agent is disabled.
+pub fn analyze_state(
+    config: &AppConfig,
+    state: GameState,
+    scenario: String,
+) -> Result<SimulationReport> {
     let front = state
         .fronts
         .first()
-        .context("mock scenario contains no fronts")?;
+        .context("observation contains no fronts")?;
     let metrics = FrontMetrics::calculate(front, config.risk.minimum_neck_width_km);
     let risk_level = classify_risk(metrics.encirclement_risk, &config.risk);
     let events = derive_events(None, &state, &config.risk);
@@ -49,7 +62,7 @@ pub fn run(config: &AppConfig, scenario: MockScenario) -> Result<SimulationRepor
 
     Ok(SimulationReport {
         version: env!("CARGO_PKG_VERSION"),
-        scenario: scenario.title().to_owned(),
+        scenario,
         observer_only: config.agent.observer_only,
         state,
         metrics,
