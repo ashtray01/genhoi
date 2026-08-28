@@ -1,7 +1,7 @@
 # GenHOI
 
 GenHOI is an experimental, local-first, self-learning strategy agent for
-single-player Hearts of Iron IV. The current `0.1.0-alpha.2` milestone includes
+single-player Hearts of Iron IV. The current `0.1.0-alpha.3` milestone includes
 the local learning pipeline and a read-only telemetry consumer. It does **not**
 control HOI4.
 

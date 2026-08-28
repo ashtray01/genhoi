@@ -1,6 +1,6 @@
 # Architecture
 
-## Scope of version 0.1.0-alpha.2
+## Scope of version 0.1.0-alpha.3
 
 The implementation includes the local pipeline through doctrine generation,
 plus a versioned read-only telemetry consumer. Real HOI4 telemetry production
