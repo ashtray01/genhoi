@@ -1,0 +1,50 @@
+[agent]
+enabled = true
+observer_only = true
+executor_enabled = false
+learning_enabled = true
+dry_run = true
+observer_interval_seconds = 5
+maximum_actions_per_interval = 3
+
+[llm]
+enabled = false
+model_path = "models/model.gguf"
+threads = 2
+context_size = 2048
+max_output_tokens = 256
+temperature = 0.2
+
+[reasoning]
+peace_seconds = 60
+war_seconds = 20
+offensive_seconds = 10
+immediate_cooldown_seconds = 5
+
+[risk]
+high = 0.70
+critical = 0.85
+minimum_neck_width_km = 10.0
+
+[learning]
+learning_rate = 0.10
+exploration_rate = 0.05
+
+[performance]
+maximum_ram_mb = 1536
+maximum_cpu_threads = 2
+
+[reward]
+territory_gain = 1.0
+enemy_losses = 0.4
+factory_gain = 1.2
+own_manpower_loss = 0.8
+equipment_loss = 0.7
+supply_penalty = 0.6
+encirclement_penalty = 2.0
+
+[paths]
+# Empty means the native per-user data directory:
+# Windows: %APPDATA%\GenHOI; Linux: $XDG_DATA_HOME/genhoi or ~/.local/share/genhoi
+data_dir = ""
+database = "genhoi.db"
